@@ -1,0 +1,168 @@
+"""Generate semantic HTML templates from Figma nodes."""
+
+from typing import List, Dict, Optional
+from ..figma.types import FigmaNode
+
+
+class HTMLGenerator:
+    """Generates semantic HTML from Figma designs."""
+    
+    SEMANTIC_ELEMENTS = {
+        "button": "button", "btn": "button",
+        "input": "input", "text-input": "input", "textarea": "textarea",
+        "header": "header", "nav": "nav", "navigation": "nav",
+        "footer": "footer", "section": "section", "article": "article",
+        "aside": "aside", "main": "main",
+    }
+    
+    def __init__(self, component_name: str):
+        self.component_name = component_name
+        self.asset_paths: Dict[str, str] = {}
+        self.all_elements: List[str] = []
+    
+    def generate_template(self, node: FigmaNode, asset_paths: Optional[Dict[str, str]] = None) -> str:
+        """Generate Angular HTML template from Figma node."""
+        self.asset_paths = asset_paths or {}
+        self.all_elements = []
+        
+        lines = [
+            "<!-- ==================== AUTO-GEN-START ==================== -->",
+            "<!-- Auto-generated. Do not modify manually. -->",
+            "",
+            f'<div class="{self.component_name}">'
+        ]
+        
+        self._collect_all_elements(node)
+        
+        for element in self.all_elements:
+            lines.append(f"  {element}")
+        
+        lines.extend([
+            "</div>",
+            "",
+            "<!-- ==================== AUTO-GEN-END ==================== -->"
+        ])
+        
+        return "\n".join(lines)
+    
+    def _collect_all_elements(self, node: FigmaNode) -> None:
+        """Recursively collect all elements (flattened for absolute positioning)."""
+        node_type = node.get("type", "")
+        
+        if node_type in ["DOCUMENT", "CANVAS"]:
+            for child in node.get("children", []):
+                if isinstance(child, dict):
+                    self._collect_all_elements(child)
+            return
+        
+        for child in node.get("children", []):
+            if isinstance(child, dict) and child.get("visible", True):
+                element = self._generate_element_html(child)
+                if element:
+                    self.all_elements.append(element)
+                self._collect_all_elements(child)
+    
+    def _generate_element_html(self, node: FigmaNode) -> str:
+        """Generate HTML for a single element."""
+        node_type = node.get("type", "")
+        
+        if node_type == "TEXT":
+            return self._generate_text_element(node)
+        elif node_type in ["RECTANGLE", "ELLIPSE", "VECTOR"] and node.get("id") in self.asset_paths:
+            return self._generate_image_element(node)
+        else:
+            return self._generate_container_element(node)
+    
+    def _generate_container_element(self, node: FigmaNode) -> str:
+        """Generate div/semantic element for container."""
+        node_name = node.get("name", "").lower()
+        element = self._get_semantic_element(node_name)
+        class_name = self._generate_class_name(node)
+        
+        if element in ["nav", "main", "header", "footer", "section", "article", "aside"]:
+            return f'<{element} class="{class_name}"></{element}>'
+        return f'<div class="{class_name}"></div>'
+    
+    def _generate_text_element(self, node: FigmaNode) -> str:
+        """Generate text element with proper escaping."""
+        text = node.get("characters", "")
+        node_name = node.get("name", "").lower()
+        element = self._get_text_element(node_name, text)
+        class_name = self._generate_class_name(node)
+        
+        if text:
+            # Handle special characters and line breaks
+            escaped = text.replace("\u2028", "<br>").replace("\u2029", "<br>")
+            escaped = escaped.replace("©", "&copy;").replace("®", "&reg;").replace("™", "&trade;")
+            escaped = escaped.replace("<", "&lt;").replace(">", "&gt;")
+            escaped = escaped.replace("&lt;br&gt;", "<br>")
+            return f'<{element} class="{class_name}">{escaped}</{element}>'
+        else:
+            prop = self._to_property_name(node_name or "text")
+            return f'<{element} class="{class_name}">{{{{ {prop} }}}}</{element}>'
+    
+    def _generate_image_element(self, node: FigmaNode) -> str:
+        """Generate image element."""
+        node_id = node.get("id", "")
+        asset_path = self.asset_paths.get(node_id, "")
+        class_name = self._generate_class_name(node)
+        node_name = node.get("name", "image")
+        prop = self._to_property_name(node_name)
+        
+        return f'<img [src]="{prop} || \'{asset_path}\'" alt="{node_name}" class="{class_name}" />'
+    
+    def _get_semantic_element(self, node_name: str) -> str:
+        """Get semantic element based on node name."""
+        for keyword, element in self.SEMANTIC_ELEMENTS.items():
+            if keyword in node_name.lower():
+                return element
+        return "div"
+    
+    def _get_text_element(self, node_name: str, text: str) -> str:
+        """Determine appropriate text element."""
+        name = node_name.lower()
+        
+        if "heading" in name or "title" in name:
+            for i in range(1, 7):
+                if f"h{i}" in name or f"heading-{i}" in name:
+                    return f"h{i}"
+            return "h2"
+        
+        if "paragraph" in name or "body" in name or len(text) > 50:
+            return "p"
+        
+        return "span"
+    
+    def _generate_class_name(self, node: FigmaNode) -> str:
+        """Generate BEM-style class name (must match SCSS generator)."""
+        node_name = node.get("name", "element")
+        node_id = node.get("id", "")
+        
+        class_name = node_name.lower().replace(" ", "-").replace("/", "-")
+        class_name = "".join(c for c in class_name if c.isalnum() or c == "-")
+        class_name = class_name.strip("-")
+        
+        # Add ID suffix for common duplicate names
+        duplicates = ["background", "rectangle", "group", "frame", "vector", "path", "layer", "text-field"]
+        if any(d in class_name for d in duplicates):
+            id_suffix = node_id.replace(":", "-").replace(";", "-")[-6:].lower()
+            class_name = f"{class_name}-{id_suffix}"
+        
+        return f"{self.component_name}__{class_name}"
+    
+    def _to_property_name(self, text: str) -> str:
+        """Convert text to camelCase property name."""
+        text = text.lower().replace("-", " ").replace("_", " ").replace("/", " ")
+        words = text.split()
+        
+        if not words:
+            return "text"
+        
+        prop = words[0]
+        for word in words[1:]:
+            prop += word.capitalize()
+        
+        if not prop or not prop[0].isalpha():
+            prop = "text" + prop.capitalize()
+        
+        return prop

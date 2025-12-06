@@ -1,0 +1,48 @@
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Cache
+.figma-cache/
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Angular
+node_modules/
+dist/
+.angular/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+*.log
+
+# Generated outputs (from Figma)
+src/app/components/*/
+src/assets/figma/
+design-tokens.json
+design-tokens.scss
