@@ -5,6 +5,7 @@
   <img src="https://img.shields.io/badge/Vue-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue" />
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/MCP-VS_Code-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white" alt="MCP" />
+  <a href="https://pypi.org/project/figmaforge/"><img src="https://img.shields.io/pypi/v/figmaforge?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI" /></a>
 </p>
 
 <h1 align="center">🔥 FigmaForge</h1>
@@ -62,20 +63,29 @@
 
 ## 🚀 Quick Start
 
-```bash
-# Clone & install
-git clone https://github.com/aspect-developer/FigmaForge.git
-cd FigmaForge
+### Option 1: Install from PyPI (Recommended)
 
-# Setup
+```bash
+pip install figmaforge
+```
+
+### Option 2: Clone Repository
+
+```bash
+git clone https://github.com/bipuldikshit/FigmaForge.git
+cd FigmaForge
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 source .venv/bin/activate     # Mac/Linux
 pip install -r requirements.txt
+```
 
-# Configure
-cp .env.template .env
-# Add your FIGMA_TOKEN to .env
+### Configure Figma Token
+
+```bash
+# Set environment variable
+export FIGMA_TOKEN=your-token-here  # Mac/Linux
+$env:FIGMA_TOKEN="your-token-here"  # Windows
 ```
 
 > 💡 Get your Figma token at [figma.com/settings](https://www.figma.com/settings)

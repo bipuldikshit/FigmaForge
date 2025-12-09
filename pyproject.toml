@@ -42,6 +42,7 @@ dev = [
 
 [project.scripts]
 figmaforge = "cli:cli"
+figmaforge-mcp = "mcp_stdio_server:main"
 figmaforge-sync = "cli:sync"
 figmaforge-generate = "cli:generate"
 figmaforge-init = "cli:init"

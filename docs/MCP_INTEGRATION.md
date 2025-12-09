@@ -6,11 +6,42 @@ Use FigmaForge with VS Code GitHub Copilot Chat via the Model Context Protocol (
 
 ## Setup
 
-The project includes `.vscode/mcp.json` which auto-configures the MCP server.
+### Step 1: Install FigmaForge
 
-1. Open the FigmaForge project in VS Code
-2. Reload window (`Ctrl+Shift+P` → "Developer: Reload Window")
-3. Verify: Command Palette → "MCP: List Servers" → Look for `figmaforge`
+```bash
+pip install figmaforge
+```
+
+### Step 2: Configure mcp.json
+
+Create `.vscode/mcp.json` in your project:
+
+```json
+{
+  "servers": {
+    "figmaforge": {
+      "type": "stdio",
+      "command": "figmaforge-mcp",
+      "env": {
+        "FIGMA_TOKEN": "${env:FIGMA_TOKEN}",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
+```
+
+### Step 3: Set Figma Token
+
+```bash
+export FIGMA_TOKEN=your-token-here  # Mac/Linux
+$env:FIGMA_TOKEN="your-token-here"  # Windows
+```
+
+### Step 4: Reload VS Code
+
+1. Reload window (`Ctrl+Shift+P` → "Developer: Reload Window")
+2. Verify: Command Palette → "MCP: List Servers" → Look for `figmaforge`
 
 ---
 
