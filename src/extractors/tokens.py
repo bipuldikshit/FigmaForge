@@ -4,6 +4,8 @@ import json
 from typing import Dict, Any, List, Set
 from ..figma.types import FigmaNode, DesignTokens
 from ..utils.console import console
+from ..utils.colors import rgba_to_hex, get_semantic_color_name
+from ..utils.css import effect_to_shadow
 
 
 class TokenExtractor:
@@ -21,6 +23,7 @@ class TokenExtractor:
         """Extract design tokens from a set of Figma nodes."""
         console.print("[cyan]🎨 Extracting design tokens...[/cyan]")
         
+        # Reset state
         self.colors = set()
         self.typography = {}
         self.spacing_values = set()
@@ -61,13 +64,13 @@ class TokenExtractor:
         for fill in node.get("fills", []):
             if fill.get("visible", True) and fill.get("type") == "SOLID":
                 if color := fill.get("color"):
-                    self.colors.add(self._rgba_to_hex(color))
+                    self.colors.add(rgba_to_hex(color))
         
         # Colors from strokes
         for stroke in node.get("strokes", []):
             if stroke.get("visible", True) and stroke.get("type") == "SOLID":
                 if color := stroke.get("color"):
-                    self.colors.add(self._rgba_to_hex(color))
+                    self.colors.add(rgba_to_hex(color))
         
         # Typography from text nodes
         if node.get("type") == "TEXT":
@@ -101,7 +104,7 @@ class TokenExtractor:
         # Shadows
         for effect in node.get("effects", []):
             if effect.get("visible", True) and effect.get("type") in ["DROP_SHADOW", "INNER_SHADOW"]:
-                shadow = self._effect_to_css_shadow(effect)
+                shadow = effect_to_shadow(effect)
                 if shadow not in self.shadows:
                     self.shadows.append(shadow)
         
@@ -116,7 +119,7 @@ class TokenExtractor:
         tokens = {}
         
         for i, color in enumerate(colors_list, 1):
-            name = self._get_color_name(color) or f"color-{i}"
+            name = get_semantic_color_name(color) or f"color-{i}"
             tokens[name] = color
         
         return tokens
@@ -155,17 +158,6 @@ class TokenExtractor:
         return tokens
     
     @staticmethod
-    def _rgba_to_hex(color: Dict[str, float]) -> str:
-        r = int(color.get("r", 0) * 255)
-        g = int(color.get("g", 0) * 255)
-        b = int(color.get("b", 0) * 255)
-        a = color.get("a", 1)
-        
-        if a < 1:
-            return f"#{r:02X}{g:02X}{b:02X}{int(a * 255):02X}"
-        return f"#{r:02X}{g:02X}{b:02X}"
-    
-    @staticmethod
     def _get_typography_key(style: Dict[str, Any]) -> str:
         return f"{style.get('fontFamily', 'default')}-{style.get('fontSize', 16)}-{style.get('fontWeight', 400)}"
     
@@ -177,29 +169,3 @@ class TokenExtractor:
         elif unit == "FONT_SIZE_%":
             return f"{style.get('lineHeightPercent', 100) / 100}"
         return "normal"
-    
-    @staticmethod
-    def _effect_to_css_shadow(effect: Dict[str, Any]) -> str:
-        offset = effect.get("offset", {})
-        x, y = offset.get("x", 0), offset.get("y", 0)
-        radius = effect.get("radius", 0)
-        spread = effect.get("spread", 0)
-        
-        color = effect.get("color", {})
-        r = int(color.get("r", 0) * 255)
-        g = int(color.get("g", 0) * 255)
-        b = int(color.get("b", 0) * 255)
-        a = color.get("a", 1)
-        
-        inset = "inset " if effect.get("type") == "INNER_SHADOW" else ""
-        return f"{inset}{x}px {y}px {radius}px {spread}px rgba({r}, {g}, {b}, {a})"
-    
-    @staticmethod
-    def _get_color_name(hex_color: str) -> str:
-        """Try to infer a semantic name for common colors."""
-        color_map = {
-            "#FFFFFF": "white", "#000000": "black",
-            "#FF0000": "red", "#00FF00": "green", "#0000FF": "blue",
-            "#FFFF00": "yellow", "#FF00FF": "magenta", "#00FFFF": "cyan",
-        }
-        return color_map.get(hex_color.upper(), "")

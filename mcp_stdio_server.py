@@ -18,11 +18,12 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-from src.figma.client import FigmaClient, FigmaAPIError
+from src.figma.client import FigmaClient
 from src.figma.normalizer import FigmaNormalizer
 from src.extractors.tokens import TokenExtractor
-from src.extractors.scss_generator import SCSSGenerator
+from src.extractors.token_scss import TokenSCSSGenerator
 from src.generators.component_generator import ComponentGenerator
+from src.exceptions import FigmaAPIError, FigmaForgeError
 
 load_dotenv()
 
@@ -32,24 +33,31 @@ _figma_client: FigmaClient | None = None
 _component_generator: ComponentGenerator | None = None
 
 
-def get_figma_client() -> FigmaClient:
+def get_figma_client(use_cache: bool = True) -> FigmaClient:
     global _figma_client
-    if _figma_client is None:
-        _figma_client = FigmaClient()
-    return _figma_client
+    # Create fresh instance with correct caching setting
+    return FigmaClient(use_cache=use_cache)
 
 
-def get_component_generator() -> ComponentGenerator:
+def get_component_generator(
+    responsive_mode: bool = False, 
+    use_cache: bool = True,
+    framework: str = "angular",
+    style_format: str = "scss"
+) -> ComponentGenerator:
     global _component_generator
-    if _component_generator is None:
-        output_path = os.getenv("ANGULAR_OUTPUT_PATH", "./src/app/components")
-        assets_path = os.getenv("ASSETS_OUTPUT_PATH", "./src/assets/figma")
-        _component_generator = ComponentGenerator(
-            figma_client=get_figma_client(),
-            output_path=output_path,
-            assets_output_path=assets_path
-        )
-    return _component_generator
+    output_path = os.getenv("ANGULAR_OUTPUT_PATH", "./src/app/components")
+    assets_path = os.getenv("ASSETS_OUTPUT_PATH", "./src/assets/figma")
+    
+    # Always create fresh generator with correct settings
+    return ComponentGenerator(
+        figma_client=get_figma_client(use_cache=use_cache),
+        output_path=output_path,
+        assets_output_path=assets_path,
+        responsive_mode=responsive_mode,
+        framework=framework,
+        style_format=style_format
+    )
 
 
 @mcp.list_tools()
@@ -80,17 +88,22 @@ Use this to explore available components before generating code.""",
         ),
         Tool(
             name="generate_component",
-            description="""Generate an Angular component from a Figma node.
+            description="""Generate a component from a Figma node.
 
-Creates TypeScript, HTML, and SCSS files for a standalone Angular component.""",
+Creates components for Angular, React, Vue, or Web Components.
+Supports responsive mode (flexbox layouts), dry-run preview, and caching control.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "fileKey": {"type": "string", "description": "Figma file key"},
                     "nodeId": {"type": "string", "description": "Node ID (format: '1:23')"},
                     "componentName": {"type": "string", "description": "Component name in kebab-case"},
-                    "styleFormat": {"type": "string", "enum": ["scss", "tailwind"]},
-                    "outputPath": {"type": "string", "description": "Custom output path"}
+                    "styleFormat": {"type": "string", "enum": ["scss", "tailwind"], "description": "Style format (default: scss)"},
+                    "framework": {"type": "string", "enum": ["angular", "react", "vue", "webcomponent"], "description": "Target framework (default: angular)"},
+                    "outputPath": {"type": "string", "description": "Custom output path"},
+                    "responsive": {"type": "boolean", "description": "Use flexbox/responsive layout"},
+                    "dryRun": {"type": "boolean", "description": "Preview code without writing files"},
+                    "noCache": {"type": "boolean", "description": "Bypass cache and fetch fresh data"}
                 },
                 "required": ["fileKey", "nodeId", "componentName"]
             }
@@ -139,6 +152,7 @@ Extracts colors, typography, spacing, radii, and shadows as SCSS variables.""",
     ]
 
 
+
 @mcp.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to handlers."""
@@ -154,8 +168,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         if handler:
             return await handler(arguments)
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
-    except FigmaAPIError as e:
-        return [TextContent(type="text", text=f"Figma API Error: {e}")]
+    except FigmaForgeError as e:
+        return [TextContent(type="text", text=f"FigmaForge Error: {e}")]
     except Exception as e:
         return [TextContent(type="text", text=f"Error: {e}")]
 
@@ -189,7 +203,18 @@ async def handle_sync_figma(args: dict[str, Any]) -> list[TextContent]:
 
 
 async def handle_generate_component(args: dict[str, Any]) -> list[TextContent]:
-    generator = get_component_generator()
+    responsive_mode = args.get("responsive", False)
+    dry_run = args.get("dryRun", False)
+    no_cache = args.get("noCache", False)
+    framework = args.get("framework", "angular")
+    style_format = args.get("styleFormat", "scss")
+    
+    generator = get_component_generator(
+        responsive_mode=responsive_mode, 
+        use_cache=not no_cache,
+        framework=framework,
+        style_format=style_format
+    )
     
     if args.get("outputPath"):
         generator.output_path = args["outputPath"]
@@ -198,7 +223,8 @@ async def handle_generate_component(args: dict[str, Any]) -> list[TextContent]:
         file_key=args["fileKey"],
         node_id=args["nodeId"],
         component_name=args["componentName"],
-        regenerate=False
+        regenerate=False,
+        dry_run=dry_run
     )
     return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
@@ -256,7 +282,7 @@ async def handle_extract_tokens(args: dict[str, Any]) -> list[TextContent]:
     token_extractor = TokenExtractor()
     tokens = token_extractor.extract_tokens(normalized["nodes"])
     
-    scss_generator = SCSSGenerator()
+    scss_generator = TokenSCSSGenerator()
     scss_content = scss_generator.generate_scss(tokens)
     
     with open(output_path, 'w', encoding='utf-8') as f:

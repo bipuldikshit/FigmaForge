@@ -25,6 +25,7 @@ build/
 # Cache
 .figma-cache/
 *.cache
+~/.figmaforge/
 
 # OS
 .DS_Store

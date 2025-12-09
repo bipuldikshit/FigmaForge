@@ -1,8 +1,10 @@
 """Normalizes Figma document structure for component generation."""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from .types import FigmaNode, FigmaComponent, FigmaFile
 from ..utils.console import console
+from ..utils.colors import rgba_to_hex
+from ..utils.css import effect_to_shadow, sanitize_css_class
 
 
 class FigmaNormalizer:
@@ -16,7 +18,7 @@ class FigmaNormalizer:
         self.all_nodes: Dict[str, FigmaNode] = {}
     
     def normalize_file(self, file_data: FigmaFile) -> Dict[str, Any]:
-        """Normalize a Figma file into a structured format with components and metadata."""
+        """Normalize a Figma file into a structured format."""
         console.print("[cyan]🔄 Normalizing Figma file structure...[/cyan]")
         
         self.components = []
@@ -44,7 +46,7 @@ class FigmaNormalizer:
         
         return {
             "id": node["id"],
-            "name": self._sanitize_name(node.get("name", "Untitled")),
+            "name": sanitize_css_class(node.get("name", "Untitled")),
             "node": node,
             "tokens": self._extract_node_tokens(node),
             "assets": self._find_asset_nodes(node)
@@ -75,30 +77,12 @@ class FigmaNormalizer:
         if node_type in self.COMPONENT_TYPES:
             return True
         
-        # Frames with PascalCase names are treated as components
         if node_type == "FRAME":
             name = node.get("name", "")
             if name and name[0].isupper():
                 return True
         
         return False
-    
-    def _sanitize_name(self, name: str) -> str:
-        """Convert Figma name to kebab-case for Angular components."""
-        name = name.lower()
-        name = name.replace("/", "-").replace("\\", "-")
-        name = name.replace(" ", "-").replace("_", "-")
-        name = "".join(c for c in name if c.isalnum() or c == "-")
-        
-        while "--" in name:
-            name = name.replace("--", "-")
-        
-        name = name.strip("-")
-        
-        if name and not name[0].isalpha():
-            name = "component-" + name
-        
-        return name or "component"
     
     def _extract_node_tokens(self, node: FigmaNode) -> Dict[str, Any]:
         """Extract design tokens from node properties."""
@@ -108,7 +92,7 @@ class FigmaNormalizer:
         if fills:
             fill = fills[0]
             if fill.get("type") == "SOLID" and "color" in fill:
-                tokens["backgroundColor"] = self._rgba_to_hex(fill["color"])
+                tokens["backgroundColor"] = rgba_to_hex(fill["color"])
         
         if node.get("type") == "TEXT":
             style = node.get("style", {})
@@ -126,7 +110,7 @@ class FigmaNormalizer:
         
         for effect in node.get("effects", []):
             if effect.get("visible", True) and effect.get("type") in ["DROP_SHADOW", "INNER_SHADOW"]:
-                tokens["boxShadow"] = self._effect_to_css_shadow(effect)
+                tokens["boxShadow"] = effect_to_shadow(effect)
                 break
         
         return tokens
@@ -148,28 +132,3 @@ class FigmaNormalizer:
     def _has_image_fill(self, node: FigmaNode) -> bool:
         fills = node.get("fills", [])
         return any(fill.get("type") == "IMAGE" for fill in fills)
-    
-    @staticmethod
-    def _rgba_to_hex(color: Dict[str, float]) -> str:
-        """Convert RGBA (0-1 range) to hex color string."""
-        r = int(color.get("r", 0) * 255)
-        g = int(color.get("g", 0) * 255)
-        b = int(color.get("b", 0) * 255)
-        a = color.get("a", 1)
-        
-        if a < 1:
-            return f"#{r:02X}{g:02X}{b:02X}{int(a * 255):02X}"
-        return f"#{r:02X}{g:02X}{b:02X}"
-    
-    @staticmethod
-    def _effect_to_css_shadow(effect: Dict[str, Any]) -> str:
-        """Convert Figma effect to CSS box-shadow."""
-        offset = effect.get("offset", {})
-        x, y = offset.get("x", 0), offset.get("y", 0)
-        radius = effect.get("radius", 0)
-        spread = effect.get("spread", 0)
-        
-        color_str = FigmaNormalizer._rgba_to_hex(effect.get("color", {}))
-        inset = "inset " if effect.get("type") == "INNER_SHADOW" else ""
-        
-        return f"{inset}{x}px {y}px {radius}px {spread}px {color_str}"

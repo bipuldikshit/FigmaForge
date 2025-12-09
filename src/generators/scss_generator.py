@@ -1,16 +1,35 @@
 """Generate component SCSS styles from Figma nodes."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from ..figma.types import FigmaNode
+from ..utils.colors import rgba_to_hex, rgba_to_css
+from ..utils.css import effect_to_shadow, sanitize_css_class, fill_to_background
 from .layout_converter import LayoutConverter
+from .responsive_layout import ResponsiveLayoutConverter
 
 
 class SCSSComponentGenerator:
-    """Generates BEM-style SCSS for Angular components."""
+    """Generates BEM-style SCSS for Angular components.
     
-    def __init__(self, component_name: str):
+    Note: This generates component-specific styles, not design token variables.
+    For design tokens, see extractors/token_scss.py
+    """
+    
+    def __init__(self, component_name: str, responsive_mode: bool = False):
+        """Initialize the SCSS generator.
+        
+        Args:
+            component_name: Name of the component for BEM class naming
+            responsive_mode: If True, use flexbox/responsive layouts instead of absolute positioning
+        """
         self.component_name = component_name
-        self.layout_converter = LayoutConverter()
+        self.responsive_mode = responsive_mode
+        
+        if responsive_mode:
+            self.layout_converter = ResponsiveLayoutConverter()
+        else:
+            self.layout_converter = LayoutConverter()
+        
         self.generated_classes: Dict[str, Dict[str, str]] = {}
         self.root_bounds = {}
         self.root_node = None
@@ -102,29 +121,36 @@ class SCSSComponentGenerator:
             styles["box-sizing"] = "border-box"
         
         # Layout
-        layout_styles = self.layout_converter.convert_layout(
-            node, parent=parent, root_bounds=self.root_bounds,
-            sibling_index=sibling_index, total_siblings=total_siblings
-        )
+        if self.responsive_mode:
+            layout_styles = self.layout_converter.convert_layout(
+                node, parent=parent, root_bounds=self.root_bounds, is_root=is_root
+            )
+        else:
+            layout_styles = self.layout_converter.convert_layout(
+                node, parent=parent, root_bounds=self.root_bounds,
+                sibling_index=sibling_index, total_siblings=total_siblings
+            )
         styles.update(layout_styles)
         
         node_type = node.get("type", "")
         
-        # Background color
+        # Background (supports solid colors and gradients)
         fills = node.get("fills", [])
-        if fills:
-            fill = fills[0]
-            if fill.get("visible", True) and fill.get("type") == "SOLID":
-                color = fill.get("color")
-                opacity = fill.get("opacity", 1.0)
-                
-                if color and node_type != "TEXT":
-                    if opacity < 1.0:
-                        styles["background-color"] = self._rgba_to_css(color, opacity)
-                        if "z-index" in styles:
-                            styles["z-index"] = "3"  # Mid-layer for semi-transparent
-                    else:
-                        styles["background-color"] = self._rgba_to_hex(color)
+        if fills and node_type != "TEXT":
+            # Process all visible fills (reversed to match CSS layer order)
+            backgrounds = []
+            for fill in reversed(fills):
+                if fill.get("visible", True):
+                    bg = fill_to_background(fill)
+                    if bg:
+                        backgrounds.append(bg)
+            
+            if backgrounds:
+                if len(backgrounds) == 1:
+                    styles["background"] = backgrounds[0]
+                else:
+                    # Multiple fills become layered backgrounds
+                    styles["background"] = ", ".join(backgrounds)
         
         # Border
         strokes = node.get("strokes", [])
@@ -134,7 +160,7 @@ class SCSSComponentGenerator:
                 color = stroke.get("color")
                 weight = node.get("strokeWeight", 1)
                 if color:
-                    styles["border"] = f"{weight}px solid {self._rgba_to_hex(color)}"
+                    styles["border"] = f"{weight}px solid {rgba_to_hex(color)}"
         
         # Border radius
         corner_radius = node.get("cornerRadius")
@@ -154,7 +180,7 @@ class SCSSComponentGenerator:
         shadows = []
         for effect in node.get("effects", []):
             if effect.get("visible", True) and effect.get("type") in ["DROP_SHADOW", "INNER_SHADOW"]:
-                shadows.append(self._effect_to_css_shadow(effect))
+                shadows.append(effect_to_shadow(effect))
         if shadows:
             styles["box-shadow"] = ", ".join(shadows)
         
@@ -195,7 +221,7 @@ class SCSSComponentGenerator:
         fills = node.get("fills", [])
         if fills and fills[0].get("type") == "SOLID":
             if color := fills[0].get("color"):
-                styles["color"] = self._rgba_to_hex(color)
+                styles["color"] = rgba_to_hex(color)
         
         return styles
     
@@ -204,9 +230,7 @@ class SCSSComponentGenerator:
         name = node.get("name", "element")
         node_id = node.get("id", "")
         
-        class_name = name.lower().replace(" ", "-").replace("/", "-")
-        class_name = "".join(c for c in class_name if c.isalnum() or c == "-")
-        class_name = class_name.strip("-")
+        class_name = sanitize_css_class(name)
         
         # Add ID suffix for duplicate-prone names
         duplicates = ["background", "rectangle", "group", "frame", "vector", "path", "layer", "text-field"]
@@ -215,38 +239,3 @@ class SCSSComponentGenerator:
             class_name = f"{class_name}-{suffix}"
         
         return f"{self.component_name}__{class_name}"
-    
-    @staticmethod
-    def _rgba_to_hex(color: Dict[str, float]) -> str:
-        r = int(color.get("r", 0) * 255)
-        g = int(color.get("g", 0) * 255)
-        b = int(color.get("b", 0) * 255)
-        a = color.get("a", 1)
-        
-        if a < 1:
-            return f"#{r:02X}{g:02X}{b:02X}{int(a * 255):02X}"
-        return f"#{r:02X}{g:02X}{b:02X}"
-    
-    @staticmethod
-    def _rgba_to_css(color: Dict[str, float], opacity: float = 1.0) -> str:
-        r = int(color.get("r", 0) * 255)
-        g = int(color.get("g", 0) * 255)
-        b = int(color.get("b", 0) * 255)
-        a = color.get("a", 1.0) * opacity
-        return f"rgba({r}, {g}, {b}, {a})"
-    
-    @staticmethod
-    def _effect_to_css_shadow(effect: Dict[str, Any]) -> str:
-        offset = effect.get("offset", {})
-        x, y = offset.get("x", 0), offset.get("y", 0)
-        radius = effect.get("radius", 0)
-        spread = effect.get("spread", 0)
-        
-        color = effect.get("color", {})
-        r = int(color.get("r", 0) * 255)
-        g = int(color.get("g", 0) * 255)
-        b = int(color.get("b", 0) * 255)
-        a = color.get("a", 1)
-        
-        inset = "inset " if effect.get("type") == "INNER_SHADOW" else ""
-        return f"{inset}{x}px {y}px {radius}px {spread}px rgba({r}, {g}, {b}, {a})"

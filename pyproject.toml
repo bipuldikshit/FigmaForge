@@ -25,10 +25,13 @@ classifiers = [
 
 dependencies = [
     "requests>=2.31.0",
+    "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
     "click>=8.1.7",
     "rich>=13.7.0",
     "mcp>=1.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +41,13 @@ dev = [
 ]
 
 [project.scripts]
-figmaforge = "cli:main"
+figmaforge = "cli:cli"
+figmaforge-sync = "cli:sync"
+figmaforge-generate = "cli:generate"
+figmaforge-init = "cli:init"
+figmaforge-watch = "cli:watch"
 
 [tool.setuptools]
 packages = ["src"]
+py-modules = ["cli", "mcp_stdio_server"]
+
