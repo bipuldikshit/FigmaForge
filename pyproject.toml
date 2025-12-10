@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "figmaforge"
-version = "1.0.0"
+version = "1.0.2"
 description = "Forge production-ready Angular components from Figma designs with AI-powered MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "FigmaForge Team"}
+    {name = "Bipul Dikshit"}
 ]
-keywords = ["figma", "angular", "component-generator", "mcp", "design-systems", "ai", "copilot"]
+keywords = ["figma", "angular", "react", "vue", "component-generator", "mcp", "design-systems", "ai", "copilot"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -42,13 +43,11 @@ dev = [
 
 [project.scripts]
 figmaforge = "cli:cli"
-figmaforge-mcp = "mcp_stdio_server:main"
-figmaforge-sync = "cli:sync"
-figmaforge-generate = "cli:generate"
-figmaforge-init = "cli:init"
-figmaforge-watch = "cli:watch"
+figmaforge-mcp = "mcp_stdio_server:run"
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]
 
 [tool.setuptools]
-packages = ["src"]
 py-modules = ["cli", "mcp_stdio_server"]
 

@@ -307,5 +307,10 @@ async def main():
         await mcp.run(read_stream, write_stream, mcp.create_initialization_options())
 
 
-if __name__ == "__main__":
+def run():
+    """Synchronous entry point for PyPI package."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()
